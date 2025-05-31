@@ -1,0 +1,107 @@
+{% extends 'base.html' %}
+{% block content %}
+    <h1>Order #{{ order.id }}</h1>
+    
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Item</th>
+                <th>Price</th>
+                <th>Currency</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in items %}
+            <tr>
+                <td>{{ item.name }}</td>
+                <td>{{ item.price }}</td>
+                <td>{{ item.get_currency_display }}</td>
+            </tr>
+            {% endfor %}
+            
+            {% if order.discount %}
+            <tr>
+                <td colspan="2">Discount ({{ order.discount.percent_off }}% - {{ order.discount.name }})</td>
+                <td>-{{ discount_amount|floatformat:2 }}</td>
+            </tr>
+            {% endif %}
+            
+            {% if order.tax and not order.tax.inclusive %}
+            <tr>
+                <td colspan="2">Tax ({{ order.tax.percentage }}% - {{ order.tax.name }})</td>
+                <td>{{ tax_amount|floatformat:2 }}</td>
+            </tr>
+            {% endif %}
+            
+            <tr class="total-row">
+                <td colspan="2">Total</td>
+                <td>{{ order.get_total_amount|floatformat:2 }} {{ stripe_currency }}</td>
+            </tr>
+        </tbody>
+    </table>
+    
+    <div>
+        <h2>Payment Options</h2>
+        
+        <!-- Checkout Session Approach -->
+        <button id="checkout-button" class="button">Pay with Stripe Checkout</button>
+        
+        <!-- Payment Intent Approach -->
+        <button id="payment-button" class="button">Pay with Payment Element</button>
+        
+        <div id="payment-element" class="payment-element" style="display:none;">
+            <!-- Stripe Payment Element will be inserted here -->
+        </div>
+    </div>
+    
+    <script>
+        // Checkout Session
+        document.getElementById('checkout-button').addEventListener('click', function() {
+            fetch('{% url "buy_order" order.id %}')
+                .then(response => response.json())
+                .then(data => {
+                    return stripe.redirectToCheckout({ sessionId: data.session_id });
+                })
+                .then(result => {
+                    if (result.error) {
+                        alert(result.error.message);
+                    }
+                });
+        });
+        
+        // Payment Intent
+        document.getElementById('payment-button').addEventListener('click', async function() {
+            const response = await fetch('{% url "create_payment_intent" order.id %}');
+			const data = await response.json();
+			console.log("DATA", data);
+            const { clientSecret, publishable_key } = data
+            const elements = stripe.elements( {clientSecret} );
+            const paymentElement = elements.create('payment');
+            paymentElement.mount('#payment-element');
+            
+            document.getElementById('payment-element').style.display = 'block';
+            document.getElementById('payment-button').style.display = 'none';
+            
+            const confirmButton = document.createElement('button');
+            confirmButton.textContent = 'Confirm Payment';
+            confirmButton.className = 'button';
+            confirmButton.id = 'confirm-button';
+            document.querySelector('.payment-element').appendChild(confirmButton);
+            
+            confirmButton.addEventListener('click', async () => {
+				elements.submit()
+                const { error } = await stripe.confirmPayment({
+                    elements,
+                    clientSecret: clientSecret,
+                    confirmParams: {
+                        return_url: window.location.origin + '{% url "payment_success" %}',
+                    },
+                });
+                
+                if (error) {
+                    alert(error.message);
+                }
+            });
+        });
+    </script>
+{% endblock %}

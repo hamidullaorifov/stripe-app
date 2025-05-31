@@ -55,7 +55,7 @@ MIDDLEWARE = [
 
 STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY')
 STRIPE_PUBLISHABLE_KEY = os.getenv('STRIPE_PUBLISHABLE_KEY')
-
+SITE_URL = 'http://localhost:8000'
 ROOT_URLCONF = 'stripeapp.urls'
 
 TEMPLATES = [

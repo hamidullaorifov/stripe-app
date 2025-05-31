@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% block content %}
+    <h1>{{ item.name }}</h1>
+    <p>{{ item.description }}</p>
+    <p>Price: {{ item.price }} {{ item.get_currency_display }}</p>
+    
+    <!-- Checkout Session Approach -->
+    <button class="btn btn-primary" id="buy-item-button" data-item-id="{{item.id}}">Buy with Checkout</button>
+    
+    <!-- Payment Intent Approach -->
+    <button class="btn btn-primary" id="payment-button">Pay with Elements</button>
+    
+    <div id="payment-element" style="display:none;"></div>
+    
+    <script>
+        // Checkout Session
+        
+        
+        // Payment Intent
+        document.getElementById('payment-button').addEventListener('click', async function() {
+            const response = await fetch('/pay/{{ item.id }}/');
+            const { client_secret, publishable_key } = await response.json();
+            
+            const stripe = Stripe(publishable_key);
+            const elements = stripe.elements();
+            const paymentElement = elements.create('payment');
+            paymentElement.mount('#payment-element');
+            
+            document.getElementById('payment-element').style.display = 'block';
+            document.getElementById('payment-button').style.display = 'none';
+            
+            const confirmButton = document.createElement('button');
+            confirmButton.textContent = 'Confirm Payment';
+            confirmButton.id = 'confirm-button';
+            document.body.appendChild(confirmButton);
+            
+            confirmButton.addEventListener('click', async () => {
+                const { error } = await stripe.confirmPayment({
+                    elements,
+                    clientSecret: client_secret,
+                    confirmParams: {
+                        return_url: window.location.origin + '/success/',
+                    },
+                });
+                
+                if (error) {
+                    console.error(error);
+                }
+            });
+        });
+    </script>
+{% endblock content %}
