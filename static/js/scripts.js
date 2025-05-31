@@ -1,12 +1,11 @@
-    $(document).ready(function() {
-    
+$(document).ready(function() {
 
     // Checkout button handler
-    $('#buy-item-button').click(async function() {
+    async function initiateStripeCheckout(url)
+    {
         try {
             const csrftoken = getCookie('csrftoken');
-            const itemId = $(this).data('item-id');
-            const response = await fetch(`/orders/buy/item/${itemId}/`, {
+            const response = await fetch(url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -26,8 +25,65 @@
             console.error('Error:', error);
             showToast('An error occurred during checkout');
         }
+    }
+    async function handleStripePayment(url, buttonId) {
+        const response = await fetch(url);
+        const data = await response.json();
+        const { clientSecret } = data
+        const elements = stripe.elements( {clientSecret} );
+        const paymentElement = elements.create('payment');
+        paymentElement.mount('#payment-element');
+        
+        document.getElementById('payment-element').style.display = 'block';
+        const button = document.getElementById(buttonId);
+        button.style.display = 'none';
+        
+        const confirmButton = document.createElement('button');
+        confirmButton.textContent = 'Confirm Payment';
+        confirmButton.className = 'btn btn-primary mt-3';
+        confirmButton.id = 'confirm-button';
+        $('.payment-element').append(confirmButton);
+        
+        confirmButton.addEventListener('click', async () => {
+            elements.submit()
+            const { error } = await stripe.confirmPayment({
+                elements,
+                clientSecret: clientSecret,
+                confirmParams: {
+                    return_url: window.location.origin + '/orders/payment-success/',
+                },
+            });
+            
+            if (error) {
+                alert(error.message);
+            }
+        });
+    }
+
+
+    $('#buy-item-button').click(async function() {
+        const itemId = $(this).data('item-id');
+        const url = `/orders/buy/item/${itemId}/`;
+        await initiateStripeCheckout(url);    
     });
-    // Update cart badge
+
+    $('#buy-order-button').click(async function() {
+        const orderId = $(this).data('order-id');
+        const url = `/orders/buy/order/${orderId}/`;
+        await initiateStripeCheckout(url);
+    });
+    
+    $('#order-payment-button').click(async function() {
+        const orderId = $(this).data('order-id');
+        const url = `/orders/create-payment-intent/order/${orderId}/`;
+        await handleStripePayment(url, 'order-payment-button');
+    });
+
+    $('#item-payment-button').click(async function() {
+        const itemId = $(this).data('item-id');
+        const url = `/orders/create-payment-intent/item/${itemId}/`;
+        await handleStripePayment(url, 'item-payment-button');
+    });
     
     // Show toast notification
     function showToast(message) {

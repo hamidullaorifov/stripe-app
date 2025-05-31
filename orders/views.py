@@ -39,7 +39,6 @@ def buy_item(request, item_id):
 
 
 def order_list(request):
-    print("ORDERS")
     orders = Order.objects.all()
     return render(request, 'orders/order_list.html', {'orders': orders})
 
@@ -71,17 +70,24 @@ def order_detail(request, id):
 def buy_order(request, id):
     order = get_object_or_404(Order, pk=id)
     currency = order.get_currency()
-
-    line_items = [{
-        'price_data': {
-            'currency': currency,
-            'product_data': {
-                'name': item.name,
+    line_items = []
+    for item in order.items.all():
+        line_item = {
+            'price_data': {
+                'currency': currency,
+                'product_data': {
+                    'name': item.name,
+                },
+                'unit_amount': int(item.price * 100),  # convert to cents
             },
-            'unit_amount': int(item.price * 100),
-        },
-        'quantity': 1,
-    } for item in order.items.all()]
+            'quantity': 1,
+        }
+
+        # Apply tax if exists
+        if order.tax:
+            line_item['tax_rates'] = [order.tax.stripe_id]
+
+        line_items.append(line_item)
 
     discounts = []
     if order.discount:
@@ -95,15 +101,15 @@ def buy_order(request, id):
             line_items=line_items,
             mode='payment',
             discounts=discounts,
-            success_url=settings.SITE_URL + '/success/',
-            cancel_url=settings.SITE_URL + '/cancel/',
+            success_url=request.build_absolute_uri('/payment-success/'),
+            cancel_url=request.build_absolute_uri('/'),
         )
-        return JsonResponse({'session_id': checkout_session.id})
+        return JsonResponse({'session': checkout_session.id})
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=400)
 
 
-def create_payment_intent(request, order_id):
+def create_order_payment_intent(request, order_id):
     order = get_object_or_404(Order, pk=order_id)
 
     try:
@@ -119,3 +125,26 @@ def create_payment_intent(request, order_id):
         })
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=400)
+
+
+def create_item_payment_intent(request, item_id):
+    item = get_object_or_404(Item, pk=item_id)
+
+    try:
+        intent = stripe.PaymentIntent.create(
+            amount=int(item.price * 100),
+            currency=item.currency,
+            metadata={'item_id': item.id},
+        )
+        return JsonResponse({
+            'clientSecret': intent['client_secret'],
+            'amount': intent['amount'],
+            'currency': intent['currency']
+        })
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=400)
+
+
+def payment_success(request):
+    # This is where Stripe will redirect after payment
+    return render(request, 'orders/payment_success.html')
